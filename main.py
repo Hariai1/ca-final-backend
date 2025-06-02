@@ -8,10 +8,13 @@ load_dotenv()
 
 app = FastAPI()
 
-# ✅ CORS setup to allow frontend access
+# ✅ Allow both local and deployed frontend (Vercel)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Match frontend port
+    allow_origins=[
+        "http://localhost:5173",
+        "https://ca-final-frontend.vercel.app"  # 👈 added this
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
