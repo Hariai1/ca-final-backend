@@ -13,7 +13,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://ca-final-frontend.vercel.app"  # 👈 added this
+        "https://ca-final-frontend.vercel.app"  # 👈 for Vercel frontend
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -37,12 +37,13 @@ def search(query: dict):
         user_query = query.get("query", "")
         keywords = user_query.lower().split()
 
-        # ✅ Create OR filter for tags
+        # ✅ OR filter for tags column
         tag_filters = {
             "operator": "Or",
             "operands": [{"path": ["tags"], "operator": "Like", "valueText": word} for word in keywords]
         }
 
+        # ✅ Run semantic search on combinedText with better certainty
         response = client.query.get("FR_Inventories", [
             "question", "answer", "howToApproach",
             "chapter", "conceptTested", "conceptSummary",
@@ -50,10 +51,11 @@ def search(query: dict):
         ])\
         .with_near_text({
             "concepts": [user_query],
-            "certainty": 0.4
+            "moveTo": {"concepts": ["combinedText"]},
+            "certainty": 0.6  # 🔁 Adjust if needed
         })\
         .with_where(tag_filters)\
-        .with_limit(10)\
+        .with_limit(15)\
         .do()
 
         raw_result = response.get("data", {}).get("Get", {}).get("FR_Inventories")
@@ -61,7 +63,7 @@ def search(query: dict):
         if not raw_result:
             return {"result": []}
 
-        # ✅ Sort: highest keyword match in tags
+        # ✅ Sort by keyword matches in tags
         def tag_match_score(item):
             tags = item.get("tags", "").lower().split(",")
             return sum(1 for kw in keywords if kw in tags)
