@@ -37,7 +37,7 @@ def search(query: dict):
         user_query = query.get("query", "")
         keywords = user_query.lower().split()
 
-        # Step 1: Semantic Search
+        # ✅ Step 1: Semantic Search
         semantic_response = client.query.get("FR_Inventories", [
             "question", "answer", "howToApproach",
             "chapter", "conceptTested", "conceptSummary",
@@ -47,12 +47,12 @@ def search(query: dict):
             "concepts": [user_query],
             "certainty": 0.3
         })\
-        .with_limit(10)\
+        .with_limit(50)\
         .do()
 
         semantic_results = semantic_response.get("data", {}).get("Get", {}).get("FR_Inventories", []) or []
 
-        # Step 2: Tag Match Search
+        # ✅ Step 2: Tag Match Search
         tag_filter = {
             "operator": "Or",
             "operands": [{"path": ["tags"], "operator": "Like", "valueText": word} for word in keywords]
@@ -64,12 +64,12 @@ def search(query: dict):
             "sourceDetails", "tags", "combinedText"
         ])\
         .with_where(tag_filter)\
-        .with_limit(10)\
+        .with_limit(50)\
         .do()
 
         tag_results = tag_response.get("data", {}).get("Get", {}).get("FR_Inventories", []) or []
 
-        # Step 3: Merge without duplicates
+        # ✅ Step 3: Merge without duplicates
         seen = set()
         merged_results = []
 
@@ -79,7 +79,14 @@ def search(query: dict):
                 merged_results.append(item)
                 seen.add(q)
 
-        return {"result": merged_results}
+        # ✅ Step 4: Sort by tag match score
+        def tag_score(item):
+            tags = item.get("tags", "").lower().split(",")
+            return sum(1 for word in keywords if word in tags)
+
+        sorted_results = sorted(merged_results, key=tag_score, reverse=True)
+
+        return {"result": sorted_results}
 
     except Exception as e:
         print("🔥 BACKEND ERROR:", e)
