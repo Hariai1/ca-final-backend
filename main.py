@@ -43,9 +43,9 @@ def search(query: dict):
         ])\
         .with_near_text({
             "concepts": [user_query],
-            "certainty": 0.45
+            "certainty": 0.6
         })\
-        .with_limit(25)\
+        .with_limit(30)\
         .do()
 
         semantic_results = semantic_response.get("data", {}).get("Get", {}).get("FR_Inventories", []) or []
@@ -62,7 +62,7 @@ def search(query: dict):
             "tags", "combinedText"
         ])\
         .with_where(tag_filter)\
-        .with_limit(25)\
+        .with_limit(30)\
         .do()
 
         tag_results = tag_response.get("data", {}).get("Get", {}).get("FR_Inventories", []) or []
