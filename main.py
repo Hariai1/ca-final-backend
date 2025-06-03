@@ -8,6 +8,7 @@ load_dotenv()
 
 app = FastAPI()
 
+# ✅ Allow both local and deployed frontend (Vercel)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -19,6 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ✅ Weaviate v3 client setup
 WEAVIATE_URL = os.getenv("WEAVIATE_URL")
 WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -35,7 +37,7 @@ def search(query: dict):
         user_query = query.get("query", "")
         keywords = user_query.lower().split()
 
-        # ✅ Step 1: Semantic search (higher certainty for relevance)
+        # ✅ Step 1: Semantic search
         semantic_response = client.query.get("FR_Inventories", [
             "question", "answer", "howToApproach", "chapter",
             "conceptTested", "conceptSummary", "sourceDetails",
@@ -84,8 +86,8 @@ def search(query: dict):
 
         merged_results.sort(key=tag_score, reverse=True)
 
-        # ✅ Step 5: Limit final results
-        return {"result": merged_results[:15]}
+        # ✅ Step 5: Limit final output to 50
+        return {"result": merged_results[:50]}
 
     except Exception as e:
         print("🔥 BACKEND ERROR:", e)
