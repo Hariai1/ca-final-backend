@@ -37,13 +37,13 @@ def search(query: dict):
         user_query = query.get("query", "")
         keywords = user_query.lower().split()
 
-        # ✅ OR filter for tags column
+        # ✅ Create OR filter for tags
         tag_filters = {
             "operator": "Or",
             "operands": [{"path": ["tags"], "operator": "Like", "valueText": word} for word in keywords]
         }
 
-        # ✅ Run semantic search on combinedText with better certainty
+        # ✅ Use semantic match with certainty only
         response = client.query.get("FR_Inventories", [
             "question", "answer", "howToApproach",
             "chapter", "conceptTested", "conceptSummary",
@@ -51,8 +51,7 @@ def search(query: dict):
         ])\
         .with_near_text({
             "concepts": [user_query],
-            "moveTo": {"concepts": ["combinedText"]},
-            "certainty": 0.6  # 🔁 Adjust if needed
+            "certainty": 0.6
         })\
         .with_where(tag_filters)\
         .with_limit(15)\
@@ -63,7 +62,7 @@ def search(query: dict):
         if not raw_result:
             return {"result": []}
 
-        # ✅ Sort by keyword matches in tags
+        # ✅ Sort: highest keyword match in tags
         def tag_match_score(item):
             tags = item.get("tags", "").lower().split(",")
             return sum(1 for kw in keywords if kw in tags)
