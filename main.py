@@ -43,7 +43,7 @@ def search(query: dict):
         ])\
         .with_near_text({
             "concepts": [user_query],
-            "certainty": 0.6
+            "certainty": 0.8
         })\
         .with_limit(30)\
         .do()
