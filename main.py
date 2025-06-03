@@ -37,39 +37,49 @@ def search(query: dict):
         user_query = query.get("query", "")
         keywords = user_query.lower().split()
 
-        # ✅ Create OR filter for tags
-        tag_filters = {
-            "operator": "Or",
-            "operands": [{"path": ["tags"], "operator": "Like", "valueText": word} for word in keywords]
-        }
-
-        # ✅ Use semantic match with certainty only
-        response = client.query.get("FR_Inventories", [
+        # Step 1: Semantic Search (no tag filter)
+        semantic_response = client.query.get("FR_Inventories", [
             "question", "answer", "howToApproach",
             "chapter", "conceptTested", "conceptSummary",
             "sourceDetails", "tags", "combinedText"
         ])\
         .with_near_text({
             "concepts": [user_query],
-            "certainty": 0.6
+            "certainty": 0.3
         })\
-        .with_where(tag_filters)\
-        .with_limit(15)\
+        .with_limit(10)\
         .do()
 
-        raw_result = response.get("data", {}).get("Get", {}).get("FR_Inventories")
+        semantic_results = semantic_response.get("data", {}).get("Get", {}).get("FR_Inventories", [])
 
-        if not raw_result:
-            return {"result": []}
+        # Step 2: Tag Filter Search (OR across all keywords)
+        tag_filter = {
+            "operator": "Or",
+            "operands": [{"path": ["tags"], "operator": "Like", "valueText": word} for word in keywords]
+        }
 
-        # ✅ Sort: highest keyword match in tags
-        def tag_match_score(item):
-            tags = item.get("tags", "").lower().split(",")
-            return sum(1 for kw in keywords if kw in tags)
+        tag_response = client.query.get("FR_Inventories", [
+            "question", "answer", "howToApproach",
+            "chapter", "conceptTested", "conceptSummary",
+            "sourceDetails", "tags", "combinedText"
+        ])\
+        .with_where(tag_filter)\
+        .with_limit(10)\
+        .do()
 
-        sorted_results = sorted(raw_result, key=tag_match_score, reverse=True)
+        tag_results = tag_response.get("data", {}).get("Get", {}).get("FR_Inventories", [])
 
-        return {"result": sorted_results}
+        # Merge results without duplicates (based on question text)
+        seen = set()
+        merged_results = []
+
+        for item in semantic_results + tag_results:
+            q = item.get("question", "").strip().lower()
+            if q not in seen:
+                merged_results.append(item)
+                seen.add(q)
+
+        return {"result": merged_results}
 
     except Exception as e:
         print("🔥 BACKEND ERROR:", e)
