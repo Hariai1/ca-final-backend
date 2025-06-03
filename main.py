@@ -37,7 +37,7 @@ def search(query: dict):
         user_query = query.get("query", "")
         keywords = user_query.lower().split()
 
-        # Step 1: Semantic Search (no tag filter)
+        # Step 1: Semantic Search
         semantic_response = client.query.get("FR_Inventories", [
             "question", "answer", "howToApproach",
             "chapter", "conceptTested", "conceptSummary",
@@ -50,9 +50,9 @@ def search(query: dict):
         .with_limit(10)\
         .do()
 
-        semantic_results = semantic_response.get("data", {}).get("Get", {}).get("FR_Inventories", [])
+        semantic_results = semantic_response.get("data", {}).get("Get", {}).get("FR_Inventories", []) or []
 
-        # Step 2: Tag Filter Search (OR across all keywords)
+        # Step 2: Tag Match Search
         tag_filter = {
             "operator": "Or",
             "operands": [{"path": ["tags"], "operator": "Like", "valueText": word} for word in keywords]
@@ -67,9 +67,9 @@ def search(query: dict):
         .with_limit(10)\
         .do()
 
-        tag_results = tag_response.get("data", {}).get("Get", {}).get("FR_Inventories", [])
+        tag_results = tag_response.get("data", {}).get("Get", {}).get("FR_Inventories", []) or []
 
-        # Merge results without duplicates (based on question text)
+        # Step 3: Merge without duplicates
         seen = set()
         merged_results = []
 
