@@ -3,7 +3,7 @@
 # ✅ NEW FastAPI BACKEND (stable and production ready)
 
 from fastapi import FastAPI, Request
-from openai import OpenAI
+import openai
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
@@ -53,7 +53,7 @@ WEAVIATE_URL = os.getenv("WEAVIATE_URL")
 WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
 CLASS_NAME = "FR_Inventories"
 
-client_openai = OpenAI(api_key=OPENAI_API_KEY, http_client=None)
+openai.api_key = OPENAI_API_KEY
 
 client_weaviate = weaviate.connect_to_weaviate_cloud(
     cluster_url=WEAVIATE_URL,
@@ -90,15 +90,16 @@ def rewrite_with_gpt(query):
         "You are assisting CA Final students. Correct grammar and rewrite into an academic-style query. "
         "Preserve original intent (example, illustration, test your knowledge, mtp, rtp, past paper, etc.)."
     )
-    response = client_openai.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": f"Rewrite: {query}"}
-        ],
-        temperature=0.2
+    response = openai.ChatCompletion.create(
+    model="gpt-4",
+    messages=[
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": f"Rewrite: {query}"}
+    ],
+    temperature=0.2
     )
-    return response.choices[0].message.content.strip()
+    return response.choices[0].message["content"].strip()
+
 
 # ✅ NLP helpers
 
