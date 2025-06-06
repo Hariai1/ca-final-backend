@@ -1,5 +1,7 @@
 # ✅ NEW FastAPI BACKEND (full logic from updated Python script, no logic missed)
 
+# ✅ NEW FastAPI BACKEND (stable and production ready)
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -7,6 +9,7 @@ import os
 import datetime
 import csv
 from dotenv import load_dotenv
+
 from textblob import TextBlob
 from rapidfuzz import process
 
@@ -20,13 +23,18 @@ except OSError:
     spacy.cli.download("en_core_web_sm")
     nlp = spacy.load("en_core_web_sm")
 
+# ✅ Setup Weaviate + OpenAI
+import weaviate
+from weaviate.auth import AuthApiKey
+from openai import OpenAI
+
 # ✅ Load .env variables
 load_dotenv()
 
-# ✅ Initialize FastAPI app
+# ✅ Create FastAPI app
 app = FastAPI()
 
-# ✅ Allow frontend access
+# ✅ Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -38,16 +46,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ Load spaCy model
-nlp = spacy.load("en_core_web_sm")
-
-# ✅ Setup Keys
+# ✅ Setup API Keys and clients
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 WEAVIATE_URL = os.getenv("WEAVIATE_URL")
 WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
 CLASS_NAME = "FR_Inventories"
 
 client_openai = OpenAI(api_key=OPENAI_API_KEY)
+
 client_weaviate = weaviate.connect_to_weaviate_cloud(
     cluster_url=WEAVIATE_URL,
     auth_credentials=AuthApiKey(WEAVIATE_API_KEY),
@@ -68,6 +74,8 @@ command_filters = {
     "%other": ["other"],
     "%all": ["example", "illustration", "test your knowledge", "mtp", "rtp", "past papers", "other"]
 }
+
+# ✅ Continue with the rest of your code: spell check, GPT rewrite, fuzzy logic, query endpoint, etc...
 
 # ✅ Spell check
 
