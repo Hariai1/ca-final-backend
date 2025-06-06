@@ -6,16 +6,24 @@ from pydantic import BaseModel
 import os
 import datetime
 import csv
-import weaviate
-from weaviate.auth import AuthApiKey
-from openai import OpenAI
-import spacy
+from dotenv import load_dotenv
 from textblob import TextBlob
 from rapidfuzz import process
-from dotenv import load_dotenv
 
+# ✅ Fix spaCy model load with fallback
+import spacy
+import spacy.cli
+
+try:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
+    spacy.cli.download("en_core_web_sm")
+    nlp = spacy.load("en_core_web_sm")
+
+# ✅ Load .env variables
 load_dotenv()
 
+# ✅ Initialize FastAPI app
 app = FastAPI()
 
 # ✅ Allow frontend access
