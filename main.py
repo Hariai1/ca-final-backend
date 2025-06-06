@@ -53,7 +53,7 @@ WEAVIATE_URL = os.getenv("WEAVIATE_URL")
 WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
 CLASS_NAME = "FR_Inventories"
 
-client_openai = OpenAI()
+client_openai = OpenAI(api_key=OPENAI_API_KEY, http_client=None)
 
 client_weaviate = weaviate.connect_to_weaviate_cloud(
     cluster_url=WEAVIATE_URL,
