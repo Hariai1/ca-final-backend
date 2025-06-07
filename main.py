@@ -87,8 +87,18 @@ def correct_spelling(text):
 
 def rewrite_with_gpt(query):
     prompt = (
-        "You are assisting CA Final students. Correct grammar and rewrite into an academic-style query. "
-        "Preserve original intent (example, illustration, test your knowledge, mtp, rtp, past paper, etc.)."
+         "You are assisting CA Final students in retrieving specific types of academic questions. "
+        "First, correct any spelling or grammar errors in the query. "
+        "Then rewrite the corrected query into a clear, academic-style version using CA Final terminology.\n\n"
+        "STRICT RULE: Do NOT change the user's intent regarding the type of question. Preserve meaning strictly.\n\n"
+        "→ Interpret exactly:\n"
+        "1. 'example' or 'examples': Conceptual/narrative only. Match sourceDetails with 'example'.\n"
+        "2. 'illustration' or 'illustrations': Numerical/practical only. Match sourceDetails with 'illustration'.\n"
+        "3. 'test your knowledge': Match 'Test Your Knowledge' in Study Material.\n"
+        "4. 'mtp' or 'model test paper': Match Model Test Paper questions.\n"
+        "5. 'rtp' or 'revision test paper': Match RTP questions.\n"
+        "6. 'past paper' or 'question paper': Match past exam papers only.\n\n"
+        "If query includes terms like 'explain', 'understand', 'clarify', treat it as a request for conceptual clarity using Study Material examples."
     )
     response = openai.ChatCompletion.create(
     model="gpt-4",
