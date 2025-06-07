@@ -8,7 +8,7 @@ import datetime
 import csv
 import weaviate
 from weaviate.auth import AuthApiKey
-from openai import OpenAI
+import openai
 import spacy
 from textblob import TextBlob
 from rapidfuzz import process
@@ -20,6 +20,9 @@ WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
 WEAVIATE_URL = os.getenv("WEAVIATE_URL")
 class_name = "FR_Inventories"
 
+openai.api_key = OPENAI_API_KEY
+
+
 # ✅ Safety check
 if not all([OPENAI_API_KEY, WEAVIATE_API_KEY, WEAVIATE_URL]):
     raise EnvironmentError("Missing one or more environment variables.")
@@ -28,7 +31,6 @@ if not all([OPENAI_API_KEY, WEAVIATE_API_KEY, WEAVIATE_URL]):
 app = FastAPI()
 
 # ✅ Connect to OpenAI and Weaviate
-client_openai = OpenAI(api_key=OPENAI_API_KEY)
 client_weaviate = weaviate.connect_to_weaviate_cloud(
     cluster_url=WEAVIATE_URL,
     auth_credentials=AuthApiKey(WEAVIATE_API_KEY),
@@ -78,7 +80,7 @@ def correct_spelling(text):
     return str(TextBlob(text).correct())
 
 def rewrite_query(text):
-    response = client_openai.chat.completions.create(
+    response = openai.ChatCompletion.create(  # ✅ FIXED
         model="gpt-4",
         messages=[
             {"role": "system", "content": REWRITE_SYSTEM_PROMPT},
