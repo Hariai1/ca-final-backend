@@ -29,6 +29,15 @@ if not all([OPENAI_API_KEY, WEAVIATE_API_KEY, WEAVIATE_URL]):
 
 # ✅ Initialize FastAPI app
 app = FastAPI()
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or replace * with your Vercel URL for more security
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ✅ Connect to OpenAI and Weaviate
 client_weaviate = weaviate.connect_to_weaviate_cloud(
@@ -36,7 +45,13 @@ client_weaviate = weaviate.connect_to_weaviate_cloud(
     auth_credentials=AuthApiKey(WEAVIATE_API_KEY),
     headers={"X-OpenAI-Api-Key": OPENAI_API_KEY}
 )
-nlp = spacy.load("en_core_web_sm")
+import spacy.cli
+
+try:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
+    spacy.cli.download("en_core_web_sm")
+    nlp = spacy.load("en_core_web_sm")
 
 # ✅ Input schema
 class QueryInput(BaseModel):
