@@ -157,8 +157,15 @@ def show_preview(results):
 @app.post("/process-query")
 def process_query_api(input_data: QueryInput):
     raw_query = input_data.query.strip()
-    collection = client_weaviate.collections.get(class_name)
 
+    # ✅ Add this correction logic here
+    corrected_query = str(TextBlob(raw_query).correct())
+    print("📝 Raw Query:", raw_query)
+    print("✏️ Corrected Query:", corrected_query)
+
+    # Now replace raw_query with corrected_query for further use
+    raw_query = corrected_query
+    
     # % command
     if raw_query.lower() in command_filters:
         filters = command_filters[raw_query.lower()]
