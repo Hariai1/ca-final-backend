@@ -156,84 +156,88 @@ def show_preview(results):
 # ✅ API Route
 @app.post("/process-query")
 def process_query_api(input_data: QueryInput):
-    raw_query = input_data.query.strip()
+    try:
+        raw_query = input_data.query.strip()
 
-    # ✅ Add this correction logic here
-    corrected_query = str(TextBlob(raw_query).correct())
-    print("📝 Raw Query:", raw_query)
-    print("✏️ Corrected Query:", corrected_query)
+        # ✅ Add this correction logic here
+        corrected_query = str(TextBlob(raw_query).correct())
+        if corrected_query.lower() == raw_query.lower() or len(corrected_query.split()) != len(raw_query.split()):
+            final_query = raw_query  # keep original if correction is too aggressive
+        else:
+            final_query = corrected_query
 
-    # Now replace raw_query with corrected_query for further use
-    raw_query = corrected_query
-    
-    # % command
-    if raw_query.lower() in command_filters:
-        filters = command_filters[raw_query.lower()]
-        all_objs = collection.query.fetch_objects(limit=1000).objects
-        results = [
-            {key: o.properties.get(key) for key in [
-                "chapter", "sourceDetails", "sourceType", "conceptTested", "conceptSummary",
-                "question", "answer", "howToApproach"
-            ]}
-            for o in all_objs
-            if any(f in o.properties.get("sourceDetails", "").lower() for f in filters)
-        ]
-        return {"method": "Direct Filter", "matches": results}
+        print("📝 Raw Query:", raw_query)
+        print("✏️ Corrected Query:", corrected_query)
 
-    # # command
-    if raw_query.startswith("#"):
-        term = correct_spelling(raw_query[1:])
-        variants = expand_variants(term)
-        all_objs = collection.query.fetch_objects(limit=1000).objects
-        results = []
-        for obj in all_objs:
-            qtext = obj.properties.get("question", "").lower().replace("-", " ").replace(",", "")
-            if any(v.replace("-", " ").replace(",", "") in qtext for v in variants):
-                results.append({key: obj.properties.get(key) for key in [
+        raw_query = final_query
+
+        # % command
+        if raw_query.lower() in command_filters:
+            filters = command_filters[raw_query.lower()]
+            all_objs = collection.query.fetch_objects(limit=1000).objects
+            results = [
+                {key: o.properties.get(key) for key in [
                     "chapter", "sourceDetails", "sourceType", "conceptTested", "conceptSummary",
                     "question", "answer", "howToApproach"
-                ]})
+                ]}
+                for o in all_objs
+                if any(f in o.properties.get("sourceDetails", "").lower() for f in filters)
+            ]
+            return {"method": "Direct Filter", "matches": results}
 
-        return {"method": "Hashtag", "matches": results}
+        # # command
+        if raw_query.startswith("#"):
+            term = correct_spelling(raw_query[1:])
+            variants = expand_variants(term)
+            all_objs = collection.query.fetch_objects(limit=1000).objects
+            results = []
+            for obj in all_objs:
+                qtext = obj.properties.get("question", "").lower().replace("-", " ").replace(",", "")
+                if any(v.replace("-", " ").replace(",", "") in qtext for v in variants):
+                    results.append({key: obj.properties.get(key) for key in [
+                        "chapter", "sourceDetails", "sourceType", "conceptTested", "conceptSummary",
+                        "question", "answer", "howToApproach"
+                    ]})
+            return {"method": "Hashtag", "matches": results}
 
-    # Spell check + rewrite
-    spell_checked = correct_spelling(raw_query)
-    rewritten = rewrite_query(spell_checked)
+        # Spell check + rewrite
+        spell_checked = correct_spelling(raw_query)
+        rewritten = rewrite_query(spell_checked)
 
-    # Semantic search
-    try:
+        # Semantic search
         sem = collection.query.near_text(query=rewritten, distance=0.7, limit=10)
         objects = sem.objects if sem else []
+
+        if objects:
+            log_query(raw_query, rewritten, "Semantic", len(objects))
+            return {"method": "Semantic", "rewritten": rewritten, "matches": [
+                {key: obj.properties.get(key) for key in [
+                    "chapter", "sourceDetails", "sourceType", "conceptTested", "conceptSummary",
+                    "question", "answer", "howToApproach"
+                ]} for obj in objects
+            ]}
+
+        # Fuzzy fallback
+        tokens = normalize_tokens(raw_query)
+        all_objs = collection.query.fetch_objects(limit=1000).objects
+        tags = list(set(tag for obj in all_objs for tag in obj.properties.get("tags", [])))
+        matched_tags = fuzzy_terms_match(tokens, tags)
+        filtered = [obj.properties for obj in all_objs if any(tag in matched_tags for tag in obj.properties.get("tags", []))]
+
+        if filtered:
+            log_query(raw_query, rewritten, "Fuzzy", len(filtered))
+            return {"method": "Fuzzy", "rewritten": rewritten, "matches": [
+                {key: obj.get(key) for key in [
+                    "chapter", "sourceDetails", "sourceType", "conceptTested", "conceptSummary",
+                    "question", "answer", "howToApproach"
+                ]} for obj in filtered[:10]
+            ]}
+        else:
+            log_query(raw_query, rewritten, "No Match", 0)
+            return {"method": "No Match", "rewritten": rewritten, "matches": []}
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Semantic search failed: {str(e)}")
-
-    if objects:
-        log_query(raw_query, rewritten, "Semantic", len(objects))
-        return {"method": "Semantic", "rewritten": rewritten, "matches": [
-            {key: obj.properties.get(key) for key in [
-                "chapter", "sourceDetails", "sourceType", "conceptTested", "conceptSummary",
-                "question", "answer", "howToApproach"
-            ]} for obj in objects
-        ]}
-
-
-    # Fuzzy fallback
-    tokens = normalize_tokens(raw_query)
-    all_objs = collection.query.fetch_objects(limit=1000).objects
-    tags = list(set(tag for obj in all_objs for tag in obj.properties.get("tags", [])))
-    matched_tags = fuzzy_terms_match(tokens, tags)
-    filtered = [obj.properties for obj in all_objs if any(tag in matched_tags for tag in obj.properties.get("tags", []))]
-
-    if filtered:
-        log_query(raw_query, rewritten, "Fuzzy", len(filtered))
-        return {"method": "Fuzzy", "rewritten": rewritten, "matches": [
-            {key: obj.get(key) for key in [
-                "chapter", "sourceDetails", "sourceType", "conceptTested", "conceptSummary",
-                "question", "answer", "howToApproach"
-            ]} for obj in filtered[:10]
-        ]}
-    else:
-        log_query(raw_query, rewritten, "No Match", 0)
-        return {"method": "No Match", "rewritten": rewritten, "matches": []}
+        print("🔥 Backend Error:", str(e))
+        return {"error": str(e)}
 
 # ✅ Run the app using: uvicorn main:app --reload
