@@ -1,67 +1,64 @@
-# ✅ NEW FastAPI BACKEND (full logic from updated Python script, no logic missed)
+# ✅ Step-by-step FastAPI Integration for CA Final Query Processor
 
-# ✅ NEW FastAPI BACKEND (stable and production ready)
-
-from fastapi import FastAPI, Request
-import openai
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import os
+from dotenv import load_dotenv
 import datetime
 import csv
-from dotenv import load_dotenv
-
-from textblob import TextBlob
-from rapidfuzz import process
-
-# ✅ Fix spaCy model load with fallback
-import spacy
-import spacy.cli
-
-try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    spacy.cli.download("en_core_web_sm")
-    nlp = spacy.load("en_core_web_sm")
-
-# ✅ Setup Weaviate + OpenAI
 import weaviate
 from weaviate.auth import AuthApiKey
 from openai import OpenAI
+import spacy
+from textblob import TextBlob
+from rapidfuzz import process
 
 # ✅ Load .env variables
 load_dotenv()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
+WEAVIATE_URL = os.getenv("WEAVIATE_URL")
+class_name = "FR_Inventories"
 
-# ✅ Create FastAPI app
+# ✅ Safety check
+if not all([OPENAI_API_KEY, WEAVIATE_API_KEY, WEAVIATE_URL]):
+    raise EnvironmentError("Missing one or more environment variables.")
+
+# ✅ Initialize FastAPI app
 app = FastAPI()
 
-# ✅ Enable CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://ca-final-frontend.vercel.app"
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ✅ Setup API Keys and clients
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-WEAVIATE_URL = os.getenv("WEAVIATE_URL")
-WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
-CLASS_NAME = "FR_Inventories"
-
-openai.api_key = OPENAI_API_KEY
-
+# ✅ Connect to OpenAI and Weaviate
+client_openai = OpenAI(api_key=OPENAI_API_KEY)
 client_weaviate = weaviate.connect_to_weaviate_cloud(
     cluster_url=WEAVIATE_URL,
     auth_credentials=AuthApiKey(WEAVIATE_API_KEY),
     headers={"X-OpenAI-Api-Key": OPENAI_API_KEY}
 )
+nlp = spacy.load("en_core_web_sm")
 
-# ✅ Direct Filter Map
+# ✅ Input schema
+class QueryInput(BaseModel):
+    query: str
+
+# ✅ Rewriter prompt and filters
+REWRITE_SYSTEM_PROMPT = (
+    "You are assisting CA Final students in retrieving specific types of academic questions from a structured database.\n\n"
+    "Your task has two steps:\n"
+    "1. Correct any spelling or grammar errors in the student's input.\n"
+    "2. Rewrite the corrected query into a clear, academic-style version using CA Final terminology — only if necessary for improving clarity.\n\n"
+    "STRICT RULE: Do NOT alter the student’s original intent or question type. Preserve meaning exactly.\n\n"
+    "→ Interpretation Guide:\n"
+    "1. 'example' or 'examples': Match conceptual questions with 'example' in sourceDetails.\n"
+    "2. 'illustration' or 'illustrations': Match numerical questions with 'illustration' in sourceDetails.\n"
+    "3. 'test your knowledge': Match test questions at chapter end.\n"
+    "4. 'mtp': Model Test Papers.\n"
+    "5. 'rtp': Revision Test Papers.\n"
+    "6. 'past paper' or 'question paper': Past exam questions.\n"
+    "If verbs like 'explain', 'understand', or 'clarify' are used, match with 'example'.\n"
+    "Return original query if already structured clearly."
+)
+
+# ✅ Direct command filters
 command_filters = {
     "%example": ["example"],
     "%illustration": ["illustration"],
@@ -76,135 +73,143 @@ command_filters = {
     "%all": ["example", "illustration", "test your knowledge", "mtp", "rtp", "past papers", "other"]
 }
 
-# ✅ Continue with the rest of your code: spell check, GPT rewrite, fuzzy logic, query endpoint, etc...
-
-# ✅ Spell check
-
+# Helpers
 def correct_spelling(text):
     return str(TextBlob(text).correct())
 
-# ✅ Rewrite with GPT
-
-def rewrite_with_gpt(query):
-    prompt = (
-         "You are assisting CA Final students in retrieving specific types of academic questions. "
-        "First, correct any spelling or grammar errors in the query. "
-        "Then rewrite the corrected query into a clear, academic-style version using CA Final terminology.\n\n"
-        "STRICT RULE: Do NOT change the user's intent regarding the type of question. Preserve meaning strictly.\n\n"
-        "→ Interpret exactly:\n"
-        "1. 'example' or 'examples': Conceptual/narrative only. Match sourceDetails with 'example'.\n"
-        "2. 'illustration' or 'illustrations': Numerical/practical only. Match sourceDetails with 'illustration'.\n"
-        "3. 'test your knowledge': Match 'Test Your Knowledge' in Study Material.\n"
-        "4. 'mtp' or 'model test paper': Match Model Test Paper questions.\n"
-        "5. 'rtp' or 'revision test paper': Match RTP questions.\n"
-        "6. 'past paper' or 'question paper': Match past exam papers only.\n\n"
-        "If query includes terms like 'explain', 'understand', 'clarify', treat it as a request for conceptual clarity using Study Material examples."
+def rewrite_query(text):
+    response = client_openai.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": REWRITE_SYSTEM_PROMPT},
+            {"role": "user", "content": f"Rewrite this CA Final query: {text}"}
+        ],
+        temperature=0.2
     )
-    response = openai.ChatCompletion.create(
-    model="gpt-4",
-    messages=[
-        {"role": "system", "content": prompt},
-        {"role": "user", "content": f"Rewrite: {query}"}
-    ],
-    temperature=0.2
-    )
-    return response.choices[0].message["content"].strip()
+    return response.choices[0].message.content.strip()
 
-
-# ✅ NLP helpers
-
-def normalize(text):
+def normalize_tokens(text):
     return [token.lemma_.lower() for token in nlp(text) if not token.is_stop and not token.is_punct]
 
-def pluralize(words):
-    out = set(words)
-    for w in words:
-        if w.endswith("s"):
-            out.add(w.rstrip("s"))
-        else:
-            out.add(w + "s")
-    return list(out)
+def expand_variants(term):
+    term = term.lower().strip()
+    term_nocomma = term.replace(",", "")
+    variants = {term, term_nocomma}
 
-def fuzzy_tags(query_terms, all_tags, threshold=80):
-    result = []
+    # Number formatting
+    if term_nocomma.isdigit():
+        variants.add(f"{int(term_nocomma):,}")
+
+    # Hyphenation/spacing
+    variants.add(term.replace("-", " "))
+    variants.add(term.replace(" ", "-"))
+    variants.add(term.replace("-", "").replace(" ", ""))
+
+    return set(variants)
+
+def fuzzy_terms_match(query_terms, all_tags, threshold=80):
+    results = []
     for term in query_terms:
         matches = process.extract(term, all_tags, limit=3)
-        for match, score, _ in matches:
-            if score >= threshold:
-                result.append(match)
-    return list(set(result))
-
-# ✅ Logging
+        results.extend([m[0] for m in matches if m[1] >= threshold])
+    return list(set(results))
 
 def log_query(original, rewritten, method, count):
-    path = "query_log.csv"
-    row = [datetime.datetime.now().isoformat(), original, rewritten, method, count]
-    if not os.path.exists(path):
-        with open(path, "w", newline="") as f:
-            csv.writer(f).writerow(["Timestamp", "Original", "Rewritten", "Method", "Count"])
-    with open(path, "a", newline="") as f:
-        csv.writer(f).writerow(row)
+    log_file = "query_log.csv"
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    write_header = not os.path.exists(log_file)
+    with open(log_file, "a", newline="") as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(["Timestamp", "Original", "Rewritten", "Method", "Count"])
+        writer.writerow([timestamp, original, rewritten, method, count])
 
-# ✅ Request body model
-class QueryRequest(BaseModel):
-    query: str
+def show_preview(results):
+    print(f"\n📘 Found {len(results)} matching questions:")
+    for i, item in enumerate(results, 1):
+        print(f"{i}. {item['question'][:100]}...")
+    choice = input("\n📌 Enter result number to view full details: ")
+    if choice.isdigit() and 1 <= int(choice) <= len(results):
+        item = results[int(choice) - 1]
+        for key in ["chapter", "sourceDetails", "conceptTested", "conceptSummary", "question", "answer", "howToApproach"]:
+            print(f"{key.title()}: {item.get(key, '')}")
+    else:
+        print("❌ Invalid selection.")
 
-@app.post("/search")
-def search(request: QueryRequest):
-    raw_query = request.query.strip()
-    collection = client_weaviate.collections.get(CLASS_NAME)
+# ✅ API Route
+@app.post("/process-query")
+def process_query_api(input_data: QueryInput):
+    raw_query = input_data.query.strip()
+    collection = client_weaviate.collections.get(class_name)
 
-    # ✅ Case 1: Direct Command
+    # % command
     if raw_query.lower() in command_filters:
-        keywords = command_filters[raw_query.lower()]
+        filters = command_filters[raw_query.lower()]
         all_objs = collection.query.fetch_objects(limit=1000).objects
-        matches = []
+        results = [
+            {key: o.properties.get(key) for key in [
+                "chapter", "sourceDetails", "sourceType", "conceptTested", "conceptSummary",
+                "question", "answer", "howToApproach"
+            ]}
+            for o in all_objs
+            if any(f in o.properties.get("sourceDetails", "").lower() for f in filters)
+        ]
+        return {"method": "Direct Filter", "matches": results}
 
-        for obj in all_objs:
-            source = obj.properties.get("sourceDetails", "").lower()
-            if any(k.lower() in source for k in keywords):
-                matches.append(obj.properties)
-
-        log_query(raw_query, raw_query, "Direct Filter", len(matches))
-        return {"results": matches}
-
-    # ✅ Case 2: Hashtag Match
+    # # command
     if raw_query.startswith("#"):
-        cleaned = correct_spelling(raw_query.lstrip("#")).lower()
-        variants = {cleaned, cleaned.replace(",", ""), cleaned.replace("-", " ")}
-        if cleaned.replace(",", "").isdigit():
-            try:
-                variants.add(f"{int(cleaned.replace(',', '')):,}")
-            except:
-                pass
+        term = correct_spelling(raw_query[1:])
+        variants = expand_variants(term)
         all_objs = collection.query.fetch_objects(limit=1000).objects
-        matches = [obj.properties for obj in all_objs if any(v in obj.properties.get("question", "").lower() for v in variants)]
-        log_query(raw_query, cleaned, "Hashtag Match", len(matches))
-        return {"results": matches}
+        results = []
+        for obj in all_objs:
+            qtext = obj.properties.get("question", "").lower().replace("-", " ").replace(",", "")
+            if any(v.replace("-", " ").replace(",", "") in qtext for v in variants):
+                results.append({key: obj.properties.get(key) for key in [
+                    "chapter", "sourceDetails", "sourceType", "conceptTested", "conceptSummary",
+                    "question", "answer", "howToApproach"
+                ]})
 
-    # ✅ Case 3: Semantic + Fallbacks
-    corrected = correct_spelling(raw_query)
-    rewritten = rewrite_with_gpt(corrected)
-    if not rewritten or len(rewritten.strip()) < 3:
-        return {"results": [], "error": "⛔ Could not process query."}
+        return {"method": "Hashtag", "matches": results}
 
-    # Semantic if 4+ words
-    word_count = len(rewritten.split())
-    if word_count >= 4:
-        response = collection.query.near_text(query=rewritten, distance=0.7, limit=10)
-        results = response.objects
-        if results:
-            log_query(raw_query, rewritten, "Semantic", len(results))
-            return {"results": [obj.properties for obj in results]}
+    # Spell check + rewrite
+    spell_checked = correct_spelling(raw_query)
+    rewritten = rewrite_query(spell_checked)
 
-    # Fallback to fuzzy tag match
-    lemmas = normalize(raw_query)
-    expanded = pluralize(lemmas)
+    # Semantic search
+    try:
+        sem = collection.query.near_text(query=rewritten, distance=0.7, limit=10)
+        objects = sem.objects if sem else []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Semantic search failed: {str(e)}")
+
+    if objects:
+        log_query(raw_query, rewritten, "Semantic", len(objects))
+        return {"method": "Semantic", "rewritten": rewritten, "matches": [
+            {key: obj.properties.get(key) for key in [
+                "chapter", "sourceDetails", "sourceType", "conceptTested", "conceptSummary",
+                "question", "answer", "howToApproach"
+            ]} for obj in objects
+        ]}
+
+
+    # Fuzzy fallback
+    tokens = normalize_tokens(raw_query)
     all_objs = collection.query.fetch_objects(limit=1000).objects
-    all_tags = list(set(tag for obj in all_objs for tag in obj.properties.get("tags", [])))
-    fuzzy = fuzzy_tags(expanded, all_tags)
-    results = [obj for obj in all_objs if any(tag in fuzzy for tag in obj.properties.get("tags", []))][:10]
-    log_query(raw_query, rewritten, "Keyword (Fuzzy)", len(results))
-    return {"results": [obj.properties for obj in results]}
+    tags = list(set(tag for obj in all_objs for tag in obj.properties.get("tags", [])))
+    matched_tags = fuzzy_terms_match(tokens, tags)
+    filtered = [obj.properties for obj in all_objs if any(tag in matched_tags for tag in obj.properties.get("tags", []))]
 
-# ✅ This FastAPI retains every capability: spelling check, GPT rewriting, direct filters, hashtags, semantic + keyword fallback, and logging.
+    if filtered:
+        log_query(raw_query, rewritten, "Fuzzy", len(filtered))
+        return {"method": "Fuzzy", "rewritten": rewritten, "matches": [
+            {key: obj.get(key) for key in [
+                "chapter", "sourceDetails", "sourceType", "conceptTested", "conceptSummary",
+                "question", "answer", "howToApproach"
+            ]} for obj in filtered[:10]
+        ]}
+    else:
+        log_query(raw_query, rewritten, "No Match", 0)
+        return {"method": "No Match", "rewritten": rewritten, "matches": []}
+
+# ✅ Run the app using: uvicorn main:app --reload
