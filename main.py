@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import os
 import weaviate
 from weaviate.auth import AuthApiKey
-from openai import OpenAI
+import openai
 from pydantic import BaseModel
 import datetime
 import csv
@@ -51,8 +51,8 @@ command_filters = {
 def correct_spelling(text): return str(TextBlob(text).correct())
 
 def rewrite_query(text):
-    response = client_openai.chat.completions.create(
-        model="gpt-4",
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": REWRITE_SYSTEM_PROMPT},
             {"role": "user", "content": f"Rewrite this CA Final query: {text}"}
@@ -68,8 +68,8 @@ WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
 WEAVIATE_URL = os.getenv("WEAVIATE_URL")
 
 # ✅ Initialize OpenAI client (new API style)
-from openai import OpenAI  # ✅ make sure this is also imported at the top
-client_openai = OpenAI(api_key=OPENAI_API_KEY)
+import openai  # ✅ make sure this is also imported at the top
+openai.api_key = OPENAI_API_KEY  # usually from os.getenv("OPENAI_API_KEY")
 
 
 # ✅ Print just to confirm loading
