@@ -67,6 +67,11 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 WEAVIATE_API_KEY = os.getenv("WEAVIATE_API_KEY")
 WEAVIATE_URL = os.getenv("WEAVIATE_URL")
 
+# ✅ Initialize OpenAI client (new API style)
+from openai import OpenAI  # ✅ make sure this is also imported at the top
+client_openai = OpenAI(api_key=OPENAI_API_KEY)
+
+
 # ✅ Print just to confirm loading
 print("🔑 OpenAI Key Start:", OPENAI_API_KEY[:8])
 print("🔑 Weaviate URL:", WEAVIATE_URL)
@@ -82,9 +87,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ✅ Connect to OpenAI and Weaviate
-client_openai = OpenAI(api_key=OPENAI_API_KEY)
 
 client_weaviate = weaviate.connect_to_weaviate_cloud(
     cluster_url=WEAVIATE_URL,
