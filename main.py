@@ -48,6 +48,8 @@ command_filters = {
     "%all": ["example", "illustration", "test your knowledge", "mtp", "rtp", "past papers", "other"]
 }
 
+ENABLE_SPELL_CORRECTION = False  # Set to True if you want spelling correction
+
 def correct_spelling(text): return str(TextBlob(text).correct())
 
 def rewrite_query(text):
@@ -164,9 +166,9 @@ def process_query(payload: QueryInput):
         method = "Hashtag"
 
     else:
-        spell_checked = correct_spelling(raw_query)
+        spell_checked = correct_spelling(raw_query) if ENABLE_SPELL_CORRECTION else raw_query
         rewritten = rewrite_query(spell_checked)
-        print("✅ Spell Checked Query:", spell_checked)
+        print(f"✅ Spell Checked Query: {spell_checked} (Correction {'On' if ENABLE_SPELL_CORRECTION else 'Off'})")
         print("✅ Rewritten Query:", rewritten)
         method = "Semantic"
 
