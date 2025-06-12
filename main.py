@@ -214,9 +214,11 @@ def process_query(payload: QueryInput):
             method = "Fuzzy"
             tokens = normalize_tokens(raw_query)
             all_objs = collection.query.fetch_objects(limit=1000).objects
-            tags = list(set(tag for obj in all_objs for tag in obj.properties.get("tags", [])))
-            matched_tags = fuzzy_terms_match(tokens, tags)
-            results = [obj.properties for obj in all_objs if any(tag in matched_tags for tag in obj.properties.get("tags", []))]
+            results = []
+            for obj in all_objs:
+                text = obj.properties.get("combinedText", "").lower()
+                if any(token in text for token in tokens):
+                    results.append(obj.properties)
 
     results = results[:50]  # Limit to 50 results max
 
